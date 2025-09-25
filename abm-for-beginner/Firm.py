@@ -26,7 +26,7 @@ class Firm:
         # 失業者を候補にする（employed == False）
         available_workers = [h for h in households if not h.employed]
         # 候補が少なければ既に雇用されている人も検討するなら、available_workers.extend(...)
-        hired = random.sample(available_workers, min(10, len(available_workers)))
+        hired = random.sample(available_workers, min(6000, len(available_workers)))
         # フラグを更新（hired のみ employed=True、それ以外は False）
         for household in households:
             household.employed = household in hired
