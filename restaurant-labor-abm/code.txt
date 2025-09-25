@@ -1,0 +1,632 @@
+Appendix  
+A.1 プログラムコード 
+# -*- Mode: Python; coding: utf-8-dos; -*-  
+import sys; sys.path.insert(0, u"C:\\Program Files\\Mathematical Systems Inc\\S Quattro Simulation System V5\\lib3") 
+from psim import * 
+from graph import graphsendclient as graphclient 
+import datetime 
+import hashlib 
+graphclient.GraphServer.createServer(uri='http://127.0.0.1:57121') initialize() 
+setGlobalSeed(0) 
+# カスタムコード 
+import random 
+# シミュレーションパラメータの定義 
+class SimulationParam: 
+ def __init__(self, 
+ inputDir = u"input\\default",
+rv 
+ outputDir = u"output\\default"): 
+ pass 
+# シミュレーターの定義 
+class Simulator (SimulatorBase): 
+ def __init__(self, 
+ param = SimulationParam(), 
+ inputDir = u"input\\default", 
+ outputDir = u"output\\default", 
+ showGraph = True, 
+ start = lambda self: None, 
+ warm = lambda self: 0.0, 
+ until = lambda self: 360.0, 
+ odesolver = lambda self: dopri54Solver(dt = 0.1, rtol = 0.001, atol  = 1e-06), 
+ dataDir = u"data"): 
+ SimulatorBase.__init__(self, param, inputDir, outputDir, showGraph, start,  warm, until, odesolver, dataDir) 
+  
+ # 資源の定義 
+  
+ # オブジェクトの生成 
+ # リンクの生成 
+ # 格子グラフ の定義 
+  
+ class LatticeGraph (LatticeGraphBase): 
+ def __init__(self, **keys): 
+ LatticeGraphBase.__init__(self, u"格子グラフ", width = 5, height = 5,  type = 8, directed = False, **keys) 
+ def initAfter(self, **keys): 
+ pass 
+ def initAttribute(self, agent): 
+ pass 
+ def setPosition(self, agent, pos): 
+ try: 
+ origPos = self._agentAttrs[agent]
+rw 
+ if isinstance(origPos, (list, tuple)): 
+ # エッジ上 
+ self.graph[origPos[0]][origPos[1]]["agents"].remove(agent)  else: 
+ # ノード上 
+ self.graph.node[origPos]["agents"].remove(agent)  except: 
+ pass 
+ self._agentAttrs[agent] = pos 
+ if isinstance(pos, (list, tuple)): 
+ # エッジ上 
+ self.graph[pos[0]][pos[1]]["agents"].append(agent)  else: 
+ # ノード上 
+ self.graph.node[pos]["agents"].append(agent)  def getPosition(self, agent): 
+ return self._agentAttrs[agent] 
+ def getRandomPosition(self): 
+ return next(self.gnodeOrEdge) 
+ def draw(self, panel): 
+ screen = panel.screen 
+ for (u, v) in self.graph.edges_iter(): 
+ (x0, y0) = self.layout[u] 
+ (x1, y1) = self.layout[v] 
+ screen.line(x0, y0, x1, y1, alpha = 0.3) 
+ def drawAgents(self, panel, agents): 
+ screen = panel.screen 
+ for agent in agents: 
+ pos = agent.getPosition() 
+ if isinstance(pos, (list, tuple)): 
+ (u, v, d) = pos 
+ p0 = numpy.asarray(self.layout[u]) 
+ p1 = numpy.asarray(self.layout[v]) 
+ p = (1 - d) * p0 + d * p1 
+ screen.point(p[0], p[1], 
+ size = agent.screenSize,
+rx 
+ color = agent.screenColor,  marker = agent.screenMarker, alpha = agent.screenAlpha) 
+ else: 
+ (x, y) = self.layout[pos] 
+ screen.point(x, y, 
+ size = agent.screenSize, color = agent.screenColor, 
+marker = agent.screenMarker, 
+alpha = agent.screenAlpha) 
+ def custom(self): 
+ pass 
+  
+ self.eLatticeGraph = LatticeGraph(simulator = self)   
+ self.addEnv(self.eLatticeGraph) 
+ # 企業エージェント の定義 
+  
+ class SynchronousAgentSet2 (SynchronousAgentSetBase):  def _defAgent(self): 
+ class _Agent (SynchronousAgentBase):  def initAfter(self, *args, **keys):   
+ x = random.randint(0,4) 
+ y = random.randint(0,4) 
+ p = self.agentset.env.xy2node[(x,y)]  self.setPosition(p) 
+ self.screenColor = 'r' 
+ self.screenSize = 30 
+  
+ # type 
+ self.type = "company" 
+  
+ # レベル 
+ self.level = next(self.agentset.levelGen)  
+ry 
+ # 企業規模  
+ self.scale = next(self.agentset.scaleGen)   
+ # 企業規模によって席数、必要人数、初期人数が変わる(常に 初期人数分はいるとする、求人枠は固定)  
+ if self.scale == 1: 
+ self.frame = 1 
+ self.seats = 20 
+ self.memberNum = 1 
+ elif self.scale == 2: 
+ self.frame = 2 
+ self.seats = 50 
+ self.memberNum = 4 
+ elif self.scale == 3: 
+ self.frame = 3 
+ self.seats = 100 
+ self.memberNum = 9 
+ elif self.scale == 4: 
+ self.frame = 4 
+ self.seats = 150 
+ self.memberNum = 16 
+  
+ #満席率 
+ self.occupancy = next(self.agentset.occupancyGen)   
+ #単価 
+ self.price = next(self.agentset.priceGen)   
+ # 食材原価 
+ self.foodCost = self.price * 0.3 
+  
+  
+ if self.price == 1000: 
+ self.turnNumMax = 12 
+ elif self.price == 2000: 
+ self.turnNumMax = 8
+sp 
+ elif self.price == 3000: 
+ self.turnNumMax = 6 
+ elif self.price == 4000: 
+ self.turnNumMax = 4.8 
+ elif self.price == 5000: 
+ self.turnNumMax = 4 
+  
+  
+ # 応募中のエージェント 
+ self.apply = [] 
+  
+ # 採用中のエージェント 
+ self.adopt = [] 
+  
+ # 稼働回数 
+ self.turnNum = self.turnNumMax * ((self.memberNum +  len(self.adopt)) /(self.memberNum + self.frame)) 
+  
+  
+ def step(self): 
+ for a in self.apply: 
+ if a.wait != 0: 
+ a.wait -= 1 
+ else: 
+ if self.level - 1 <= a.level: # 採用  self.adopt.append(a) 
+ a.elapsedNum = 0 
+ a.state = "就職中" # 就職中  self.apply.remove(a) 
+ a.wait = 0 
+ else: # 不採用 
+ a.state = "情報収集中"  
+ a.company = None 
+ a.elapsedNum = 0 
+ self.apply.remove(a) 
+ a.wait = 0
+sq 
+  
+  
+self.agentset.monitor2.observe(now(),self.agentid,self.level,len(self.adopt),len(self.app ly),self.frame) 
+  
+ # コスト(客席*満席率*稼働回数*食材原価+労働者数*賃金*時間 +求人コスト)  
+ self.turnNum = self.turnNumMax * ((self.memberNum +  len(self.adopt)) /(self.memberNum + self.frame)) 
+ self.cost = self.seats * self.occupancy * self.turnNum *  self.foodCost + (self.memberNum + len(self.adopt)) * self.agentset.wage[self.level]*6  + (self.frame-len(self.adopt))*3000 
+  
+ # 売上 
+ self.sales = self.seats * self.occupancy * self.turnNum *  self.price 
+  
+  
+self.agentset.monitor6.observe(now(),self.agentid,self.sales,self.cost,self.seats,self.occ upancy,self.turnNum,self.foodCost,(self.memberNum +  
+len(self.adopt)),self.agentset.wage[self.level]*6,(self.frame 
+len(self.adopt))*3000,self.price) 
+  
+ def custom(self): 
+ pass 
+ return _Agent 
+ def initAfter(self, **keys): 
+ self.interval = 1.0 # ステップ間隔 
+ self.freezeAddAgent = True # エージェントの追加を次ステップまで 凍結する 
+ self.freezeDelAgent = True # エージェントの削除を次ステップまで凍 結する 
+ """エージェント集合の作成後にこのメソッドが呼ばれる。   
+ エージェント集合固有の初期化を行う。"""
+sr 
+ self.agentFreezeVars = [""] # エージェントの凍結する変数リスト   
+  
+ self.levelGen = empiricalDistribution(weights = [[20, 1],  [30, 2],  [20, 3],  [15, 4],  [10, 5],  [5, 6]  ])   
+ self.scaleGen = empiricalDistribution(weights = [[50.1, 1],  [30.9, 2],  [11.7, 3],  [7.3, 4]  ])   
+ self.occupancyGen = empiricalDistribution(weights = [[1, 0.5],  [1, 0.6],  [1, 0.7],  [1, 0.8]  ])   
+  
+ self.priceGen = empiricalDistribution(weights = [[1, 1000],  [1, 2000],  [1, 3000],  [1, 4000],  [1, 5000] ]) 
+  
+ # 賃金 
+ self.wage = {1:980,2:1080,3:1180,4:1280,5:1380,6:1480}   
+  
+ # エージェントの生成
+ss 
+ n = 9237 # エージェントの生成数 
+ #n = 360000 
+ self.generateAgents(n, **keys) 
+  
+  
+  
+ # 内定率 
+ self.adoptRate = 0 
+  
+ self.monitor = Monitor(["時刻","充足率"],["f","f"],name="充足率")  self.simulator.addMonitor(self.monitor) 
+  
+ self.monitor2 = Monitor(["時刻","エージェント ID","レベル","採用数"," 応募数","採用枠"],["f","i","i","i","i","i"],name="企業") 
+ self.simulator.addMonitor(self.monitor2) 
+  
+ self.monitor3 = Monitor(["時刻","レベル","採用数","応募数","採用枠 "],["f","i","i","i","i"],name="レベルごとのログ") 
+ self.simulator.addMonitor(self.monitor3) 
+  
+ self.monitor4 = Monitor(["時刻","労働者レベル","労働者種別","企業レベ ル","就労数"],["f","i","o","i","i"],name="就労ログ") 
+ self.simulator.addMonitor(self.monitor4) 
+  
+ self.monitor5 = Monitor(["時刻","就労している人数","応募している人数 ","投入されている人数"],["f","i","i","i"],name="内定ログ") 
+ self.simulator.addMonitor(self.monitor5) 
+  
+ self.monitor6 = Monitor(["時刻","エージェント ID","売上","コスト","席 数","満席率","稼働回数","食材原価","労働者数","賃金","求人コスト","客単価"],  ["f","i","i","i","i","f","i","i","i","i","i","i"],name=" 売上とコスト") 
+ self.simulator.addMonitor(self.monitor6) 
+  
+  
+ def step(self):
+st 
+ """エージェント集合のステップ処理を行う。"""  # エージェント集合へのエージェントの追加削除を凍結  self.freeze() 
+ # 全エージェントを凍結 
+ if len(self.agentFreezeVars) > 0: 
+ for agent in self.agents: 
+ agent.freeze(self.agentFreezeVars)   
+  
+  
+ # 内定率算出 
+ count = 0 
+ countframe = 0 
+ for agent in self.agents: 
+ # 集計対象のみ 
+ (x,y)=self.env.node2xy[agent.getPosition()]  #if x == 0 or x == 4 or y == 0 or y == 4:  # continue 
+  
+ count += len(agent.adopt) 
+ countframe += agent.frame 
+  
+ self.adoptRate = count / countframe   
+ self.monitor.observe(now(),self.adoptRate)   
+ # レベルごとの採用数、応募数、枠数  adopt = {} 
+ apply = {} 
+ frame = {} 
+  
+ for agent in self.agents: 
+ # 集計対象のみ 
+ (x,y)=self.env.node2xy[agent.getPosition()]  #if x == 0 or x == 4 or y == 0 or y == 4:  # continue
+su 
+ if agent.level not in adopt: 
+ adopt[agent.level] = 0 
+ if agent.level not in apply: 
+ apply[agent.level] = 0 
+ if agent.level not in frame: 
+ frame[agent.level] = 0 
+  
+ adopt[agent.level] += len(agent.adopt)  apply[agent.level] += len(agent.apply)  frame[agent.level] += agent.frame 
+  
+ for k in adopt: 
+ self.monitor3.observe(now(),k,adopt[k],apply[k],frame[k])   
+ # 就労ログ 
+ num = {} 
+ for agent in self.agents: 
+ # 集計対象のみ 
+ #(x,y)=self.env.node2xy[agent.getPosition()]  #if x == 0 or x == 4 or y == 0 or y == 4:  # continue 
+  
+ for b in agent.adopt: 
+ if (b.level,b.type,agent.level) not in num:  num[(b.level,b.type,agent.level)]=0  else: 
+ num[(b.level,b.type,agent.level)]+=1   
+ for k in num: 
+ self.monitor4.observe(now(),k[0],k[1],k[2],num[k])   
+ # 内定ログ 
+ adoptNum = 0 
+ applyNum = 0 
+ for agent in self.agents: 
+ adoptNum += len(agent.adopt)
+sv 
+ applyNum += len(agent.apply) 
+  
+ self.monitor5.observe(now(),adoptNum, 
+applyNum,self.simulator.aSynchronousAgentSet.num) 
+  
+ # 全エージェントのステップ処理 
+ for agent in self.agents: 
+ agent.step() 
+ # 全エージェントの凍結されていた変更を反映 
+ if len(self.agentFreezeVars) > 0: 
+ for agent in self.agents: 
+ agent.melt() 
+ # エージェント集合への凍結されていたエージェントの追加削除を反映  self.melt() 
+ def start(self): 
+ """同期エージェント集合の動作を開始する。""" 
+ # エージェント集合のプロセス 
+ def proc(): 
+ try: 
+ while True: 
+ # ステップ処理 
+ self.step() 
+ yield pause(self.interval) 
+ except FinishException as e: 
+ raise e 
+ except Exception as e: 
+ fatal("[%s]エージェントエラー: エージェント集合のプロセスで エラーが発生しました。" % self.name, 
+ "error in agentset process", tb = True)  # エージェント集合のプロセスを起動  
+ activate(proc)() 
+ def view(self): 
+ """エージェントの描画を開始する。""" 
+ #interval = 1 # 表示間隔 
+ #screen = self.getAgentScreen(interval = interval, xlim = None, ylim  = None)
+sw 
+ #screen.addAgentSet(self) 
+ #screen.start()  
+ pass 
+ def custom(self): 
+ pass 
+  
+ self.aSynchronousAgentSet2 = SynchronousAgentSet2(u"企業エージェント",  self.eLatticeGraph, simulator = self) 
+ self.addAgentSet(self.aSynchronousAgentSet2) 
+  
+ def startSynchronousAgentSet2(): 
+ self.aSynchronousAgentSet2.start() 
+ self.aSynchronousAgentSet2.view() 
+  
+ self.procs.append(startSynchronousAgentSet2) 
+  
+ # 労働者エージェント の定義 
+  
+ class SynchronousAgentSet (SynchronousAgentSetBase):  def _defAgent(self): 
+ class _Agent (SynchronousAgentBase): 
+ def initAfter(self, *args, **keys): 
+  
+ # 位置を決定 
+ #x = random.randint(1,3) 
+ #y = random.randint(1,3) 
+ x = random.randint(0,4) 
+ y = random.randint(0,4) 
+ p = self.agentset.env.xy2node[(x,y)] 
+ self.setPosition(p) 
+  
+ # タイプ 
+ self.type = next(self.agentset.typeGen)   
+ # レベル 
+ if self.type == "freeter":
+sx 
+ self.level = random.randint(2,6) 
+ elif self.type == "student": 
+ self.level = random.randint(3,5) 
+ elif self.type == "housewife": 
+ self.level = random.randint(2,5) 
+ elif self.type == "foreigner": 
+ self.level = random.randint(1,3) 
+  
+ # 離職日数 
+ self.elapsedNum = 0 
+  
+ # 就職日数 
+ self.workNum = 0 
+  
+ # 採用通知まで 
+ self.wait = 0 
+  
+ # 採用されている企業(企業エージェント)   self.company = None 
+  
+ # 状態(1:就職中、0:結果待ち、-1:求職中、-2:未就職)   self.state = "未就職"  
+  
+ # 色  
+ self.screenColor = 'b' 
+  
+ # サイズ 
+ self.screenSize = 30 
+  
+ def step(self): 
+ """エージェントのステップ処理""" 
+ if self.state == "就職中" and (self.workNum > 0 and  self.workNum % 30 == 0): 
+ if self.agentset.turnover[(self.type,self.workNum)] >=  random.uniform(0,1): 
+ self.state = "情報収集中" 
+sy 
+ self.workNum = 0 
+self.company.adopt.remove(self) 
+self.company = None 
+ self.wait = 0 
+  
+ if self.state == "情報収集中" and self.elapsedNum == 1:  self.state = "求職中"  
+  
+ if self.state != "就職中": 
+ self.elapsedNum += 1 
+ else: 
+ self.workNum += 1 
+  
+  
+self.agentset.monitor.observe(now(),self.agentid,self.type,self.level,self.elapsedNum,s elf.workNum,self.state,self.wait) 
+  
+  
+  
+ def custom(self):  
+ pass 
+ return _Agent 
+ def initAfter(self, **keys): 
+ self.interval = 1.0 # ステップ間隔 
+ self.freezeAddAgent = True # エージェントの追加を次ステップまで 凍結する 
+ self.freezeDelAgent = True # エージェントの削除を次ステップまで凍 結する 
+ """エージェント集合の作成後にこのメソッドが呼ばれる。   
+ エージェント集合固有の初期化を行う。""" 
+ self.agentFreezeVars = [""] # エージェントの凍結する変数リスト   
+ # タイプ 
+ self.typeGen = empiricalDistribution(weights = [[30, "freeter"],  [37, "student"],
+tp 
+ [24, "housewife"],  [9, "foreigner"]])   
+ # 採否通知までの経過日数 
+ self.notificationGen = empiricalDistribution(weights = [[5, 1],  [10, 2],  [15, 3],  [40, 4],  [15, 5], [10, 6], 
+[5, 7]]) 
+  
+  
+ # 離職率 
+ self.turnover = {} 
+ self.turnover[("freeter",30)] = 0.05 
+ self.turnover[("freeter",60)] = 0.04 
+ self.turnover[("freeter",90)] = 0.04 
+ self.turnover[("freeter",120)] = 0.03 
+ self.turnover[("freeter",150)] = 0.02 
+ self.turnover[("freeter",180)] = 0.02 
+ self.turnover[("freeter",210)] = 0.03 
+ self.turnover[("freeter",240)] = 0.03 
+ self.turnover[("freeter",270)] = 0.03 
+ self.turnover[("freeter",300)] = 0.03 
+ self.turnover[("freeter",330)] = 0.03 
+ self.turnover[("freeter",360)] = 0.03 
+  
+  
+ self.turnover[("student",30)] = 0.13 
+ self.turnover[("student",60)] = 0.06 
+ self.turnover[("student",90)] = 0.05 
+ self.turnover[("student",120)] = 0.05 
+ self.turnover[("student",150)] = 0.05 
+ self.turnover[("student",180)] = 0.05 
+ self.turnover[("student",210)] = 0.05
+tq 
+ self.turnover[("student",240)] = 0.04  self.turnover[("student",270)] = 0.04  self.turnover[("student",300)] = 0.04  self.turnover[("student",330)] = 0.04  self.turnover[("student",360)] = 0.04   
+  
+ self.turnover[("housewife",30)] = 0.03  self.turnover[("housewife",60)] = 0.02  self.turnover[("housewife",90)] = 0.02  self.turnover[("housewife",120)] = 0.02 
+ self.turnover[("housewife",150)] = 0.02  self.turnover[("housewife",180)] = 0.02  self.turnover[("housewife",210)] = 0.02  self.turnover[("housewife",240)] = 0.02  self.turnover[("housewife",270)] = 0.02  self.turnover[("housewife",300)] = 0.02  self.turnover[("housewife",330)] = 0.02  self.turnover[("housewife",360)] = 0.02   
+  
+ self.turnover[("foreigner",30)] = 0.10  self.turnover[("foreigner",60)] = 0.05  self.turnover[("foreigner",90)] = 0.05  self.turnover[("foreigner",120)] = 0.04 
+ self.turnover[("foreigner",150)] = 0.03  self.turnover[("foreigner",180)] = 0.02  self.turnover[("foreigner",210)] = 0.02  self.turnover[("foreigner",240)] = 0.02  self.turnover[("foreigner",270)] = 0.01  self.turnover[("foreigner",300)] = 0.01  self.turnover[("foreigner",330)] = 0.01  self.turnover[("foreigner",360)] = 0.01   
+  
+ 
+tr 
+ # エージェントの生成数 
+ n = 3600 
+ #n = 100 
+  
+ # 1 日あたりの応募人数（毎日一度も就職していない人が応募する人 数、離職した人は含まれない） 
+ self.applyNum = int(n/360) 
+ #self.applyNum = int(n/40) 
+  
+ # エージェントの生成 
+ self.generateAgents(n, **keys) 
+  
+ #投入人数 
+ self.num = 0 
+  
+ self.monitor = Monitor(["時刻","エージェント ID","タイプ","レベル","離 職日数","就職日数","状態","採用通知まで"],["f","i","o","i","i","i","o","i"],name="労働者")  self.simulator.addMonitor(self.monitor) 
+  
+ def step(self): 
+ """エージェント集合のステップ処理を行う。""" 
+ # エージェント集合へのエージェントの追加削除を凍結  self.freeze() 
+ # 全エージェントを凍結 
+ if len(self.agentFreezeVars) > 0: 
+ for agent in self.agents: 
+ agent.freeze(self.agentFreezeVars) 
+  
+  
+ # 応募者の選定 
+ # 新規応募者を選定 
+ tmp = [] 
+ for a in self.agents: 
+ if a.state == "未就職": 
+ tmp.append(a) 
+ 
+ts 
+ self.num += self.applyNum  
+  
+ if len(tmp) > self.applyNum: 
+ self.applicant = random.sample(tmp,self.applyNum)  else: 
+ self.applicant = [] 
+  
+ # 求職中 
+ for a in self.agents: 
+ if a.state == "求職中" and a.elapsedNum > 1:  self.applicant.append(a) 
+ a.elapsedNum = 0 
+  
+ # マッチング 
+ for a in self.applicant: 
+ # 近くの企業を探す 
+ #vs = self.env.neighbors(a.getPosition()) 
+ cs = self.simulator.aSynchronousAgentSet2.agents  companyCand = [] 
+ #for v in vs: 
+ # cList = self.env.findNodeAgents(v) 
+ # for c in cList: 
+ # if c.type != "company": 
+ # continue 
+ # if len(c.apply)+len(c.adopt) == c.frame: # 採用枠が一 杯  
+ # continue 
+ # if a.level - 1 <= c.level: 
+ # companyCand.append(c) 
+ for c in cs: 
+ if len(c.apply)+len(c.adopt) == c.frame: # 採用枠が一杯  continue 
+ if a.level - 1 <= c.level: 
+ companyCand.append(c) 
+  
+ if len(companyCand) > 0:
+tt 
+ c = random.choice(companyCand) 
+ c.apply.append(a) 
+ a.wait = next(self.notificationGen) 
+ a.company = c 
+ a.state = "結果待ち"  
+  
+  
+  
+  
+ # 全エージェントのステップ処理 
+ for agent in self.agents: 
+ agent.step() 
+ # 全エージェントの凍結されていた変更を反映 
+ if len(self.agentFreezeVars) > 0: 
+ for agent in self.agents: 
+ agent.melt() 
+ # エージェント集合への凍結されていたエージェントの追加削除を反映  self.melt() 
+ def start(self): 
+ """同期エージェント集合の動作を開始する。""" 
+ # エージェント集合のプロセス 
+ def proc(): 
+ try: 
+ while True: 
+ # ステップ処理 
+ self.step() 
+ yield pause(self.interval) 
+ except FinishException as e: 
+ raise e 
+ except Exception as e: 
+ fatal("[%s]エージェントエラー: エージェント集合のプロセスで エラーが発生しました。" % self.name, 
+ "error in agentset process", tb = True)  # エージェント集合のプロセスを起動  
+ activate(proc)() 
+ def view(self):
+tu 
+ """エージェントの描画を開始する。""" 
+ #interval = 1 # 表示間隔 
+ #screen = self.getAgentScreen(interval = interval, xlim = None, ylim  = None) 
+ #screen.addAgentSet(self) 
+ #screen.addAgentSet(self.simulator.aSynchronousAgentSet2)  #  
+ #screen.start() 
+ pass 
+  
+ def custom(self): 
+ pass 
+  
+ self.aSynchronousAgentSet = SynchronousAgentSet(u"労働者エージェント",  self.eLatticeGraph, simulator = self) 
+ self.addAgentSet(self.aSynchronousAgentSet) 
+  
+ def startSynchronousAgentSet(): 
+ self.aSynchronousAgentSet.start() 
+ self.aSynchronousAgentSet.view() 
+  
+ self.procs.append(startSynchronousAgentSet) 
+ def run(self, **args): 
+ # オブジェクトの起動 
+ try: 
+ _sim_before(self) 
+ except: 
+ pass 
+ pass 
+ def startProcs(): 
+ for proc in self.procs: 
+ proc() 
+ yield alwaysTrue() 
+ activate(startProcs)() 
+ # シミュレーション開始 
+ start(until = self.until, odesolver = self.odesolver, **args)
+tv 
+ # 結果の保存 
+ self.save() 
+ self.flush() 
+ try: 
+ _sim_after(self) 
+ except: 
+ pass 
+ def objective(self): 
+ m = Monitor(name = u"充足率", basedir = self.outputDir)[u"充足率"]  l = m.toList() 
+ return l[len(l)-1] 
+if __name__ == "__main__": 
+ # 実行時の処理 
+ simulator = Simulator(param = SimulationParam(), 
+ inputDir = u"input\\default", 
+ outputDir = u"output\\default", 
+ start = lambda self: None, 
+ warm = lambda self: 0.0, 
+ until = lambda self: 360.0, 
+ odesolver = lambda self: dopri54Solver(dt = 0.1, rtol = 0.001, atol = 1e-06))   
+ simulator.run() 
+ result = simulator.calcObjective() 
+ print(result) 
+ simulator.saveResult(result, u"objective") 
+ if simulator.agentApp is not None: 
+ print(u"エージェント画面の終了待ち受け...") 
+ simulator.join() 
+ sys.exit()
+tw
